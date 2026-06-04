@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>轻课 MomentClass</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="ink-bg ink-left"></div>
+  <div class="ink-bg ink-right"></div>
+
+  <header class="topbar">
+    <div class="brand" onclick="goHome()">
+      <div class="brand-title">轻课 <span>MomentClass</span></div>
+      <div class="brand-subtitle">顷刻互动，轻松上课</div>
+    </div>
+
+    <div id="userArea" class="user-area hidden">
+      <span class="notice-dot"></span>
+      <span class="avatar" id="avatarText">轻</span>
+      <span id="displayName">用户</span>
+      <button class="text-btn" onclick="logout()">退出</button>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <footer class="footer">轻课 MomentClass · 为《移动互联传播与 APP 应用》设计</footer>
+
+  <script src="./script.js"></script>
+</body>
+</html>
