@@ -746,23 +746,3 @@ button:disabled {
   font-size: 13px;
   border-radius: 10px;
 }
-
-
-.loading-box {
-  min-height: 220px;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  color: var(--muted);
-}
-
-.sync-note {
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.inline-form {
-  display: inline;
-}

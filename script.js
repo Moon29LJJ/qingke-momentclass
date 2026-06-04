@@ -1,7 +1,3 @@
-const SUPABASE_URL = "https://fjfqmxaklxsfhpicnllk.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_IWncfJDY94dslISYwLx8lQ_I-0K1XcN";
-const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 const COURSE = {
   id: "mobile_app_001",
   name: "移动互联传播与 APP 应用",
@@ -13,20 +9,26 @@ const COURSE = {
   desc: "本课程围绕移动互联传播场景与 APP 应用实践展开，课堂中通过签到、投票等方式完成轻量互动。"
 };
 
+const DEFAULT_USERS = [
+  { role: "teacher", account: "T2026001", realName: "张可", password: "123456", majorClass: "" },
+  { role: "student", account: "2023123456", realName: "李静", password: "123456", majorClass: "2023级新闻班" }
+];
+
+const DEFAULT_STUDENTS = [
+  { account: "2023123456", realName: "李静", majorClass: "2023级新闻班", signed: false, voted: false, called: false },
+  { account: "202311001", realName: "李明轩", majorClass: "2023级广告班", signed: false, voted: false, called: false },
+  { account: "202311002", realName: "陈雨桐", majorClass: "2023级新闻班", signed: false, voted: false, called: false },
+  { account: "202311003", realName: "王一诺", majorClass: "2023级广告班", signed: false, voted: false, called: false },
+  { account: "202311004", realName: "赵嘉禾", majorClass: "2023级新闻班", signed: false, voted: false, called: false },
+  { account: "202311005", realName: "周安然", majorClass: "2023级广告班", signed: false, voted: false, called: false }
+];
+
 const state = {
   roleTab: "student",
   registerRole: "student",
   currentUser: null,
   selectedOption: null,
-  page: "login",
-  cache: {
-    users: [],
-    students: [],
-    courseState: null,
-    poll: null,
-    pollOptions: [],
-    votes: []
-  }
+  page: "login"
 };
 
 const app = document.getElementById("app");
@@ -34,23 +36,79 @@ const userArea = document.getElementById("userArea");
 const displayName = document.getElementById("displayName");
 const avatarText = document.getElementById("avatarText");
 
+function initStorage() {
+  if (!localStorage.getItem("qingke_v5_users")) {
+    localStorage.setItem("qingke_v5_users", JSON.stringify(DEFAULT_USERS));
+  }
+  if (!localStorage.getItem("qingke_v5_students")) {
+    localStorage.setItem("qingke_v5_students", JSON.stringify(DEFAULT_STUDENTS));
+  }
+  if (!localStorage.getItem("qingke_v5_class_active")) {
+    localStorage.setItem("qingke_v5_class_active", "false");
+  }
+  if (!localStorage.getItem("qingke_v5_sign_active")) {
+    localStorage.setItem("qingke_v5_sign_active", "false");
+  }
+  if (!localStorage.getItem("qingke_v5_called_account")) {
+    localStorage.setItem("qingke_v5_called_account", "");
+  }
+  if (!localStorage.getItem("qingke_v5_poll")) {
+    localStorage.setItem("qingke_v5_poll", JSON.stringify(null));
+  }
+}
+
+function getUsers() {
+  return JSON.parse(localStorage.getItem("qingke_v5_users") || "[]");
+}
+
+function saveUsers(users) {
+  localStorage.setItem("qingke_v5_users", JSON.stringify(users));
+}
+
+function getStudents() {
+  return JSON.parse(localStorage.getItem("qingke_v5_students") || "[]");
+}
+
+function saveStudents(students) {
+  localStorage.setItem("qingke_v5_students", JSON.stringify(students));
+}
+
+function getClassActive() {
+  return localStorage.getItem("qingke_v5_class_active") === "true";
+}
+
+function setClassActive(v) {
+  localStorage.setItem("qingke_v5_class_active", String(v));
+  if (!v) setSignActive(false);
+}
+
+function getSignActive() {
+  return localStorage.getItem("qingke_v5_sign_active") === "true";
+}
+
+function setSignActive(v) {
+  localStorage.setItem("qingke_v5_sign_active", String(v));
+}
+
+function getCalledAccount() {
+  return localStorage.getItem("qingke_v5_called_account") || "";
+}
+
+function setCalledAccount(account) {
+  localStorage.setItem("qingke_v5_called_account", account || "");
+}
+
+function getPoll() {
+  return JSON.parse(localStorage.getItem("qingke_v5_poll") || "null");
+}
+
+function savePoll(poll) {
+  localStorage.setItem("qingke_v5_poll", JSON.stringify(poll));
+}
+
 function familyName(name = "用户") {
   const compound = ["欧阳", "司马", "上官", "诸葛", "东方", "尉迟", "公孙", "夏侯"];
   return compound.find(s => name.startsWith(s)) || name.slice(0, 1);
-}
-
-function escapeHTML(str="") {
-  return String(str).replace(/[&<>"']/g, m => ({
-    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
-  }[m]));
-}
-
-function escapeAttr(str="") {
-  return escapeHTML(str).replace(/"/g, "&quot;");
-}
-
-function percent(a, b) {
-  return b ? Math.round(a / b * 100) : 0;
 }
 
 function syncUserArea() {
@@ -59,96 +117,14 @@ function syncUserArea() {
     return;
   }
   userArea.classList.remove("hidden");
-  avatarText.textContent = familyName(state.currentUser.real_name);
+  avatarText.textContent = familyName(state.currentUser.realName);
   displayName.textContent = state.currentUser.role === "teacher" ? "老师" : "同学";
 }
 
-function saveSession() {
-  if (state.currentUser) {
-    sessionStorage.setItem("qingke_v6_user", JSON.stringify(state.currentUser));
-  } else {
-    sessionStorage.removeItem("qingke_v6_user");
-  }
-}
-
-function loadSession() {
-  const raw = sessionStorage.getItem("qingke_v6_user");
-  if (!raw) return;
-  try {
-    state.currentUser = JSON.parse(raw);
-  } catch (e) {
-    state.currentUser = null;
-  }
-}
-
-async function fetchAllData() {
-  const [courseRes, studentsRes, pollRes, votesRes] = await Promise.all([
-    db.from("course_state").select("*").eq("id", 1).single(),
-    db.from("students").select("*").order("id", { ascending: true }),
-    db.from("polls").select("*").eq("active", true).order("id", { ascending: false }).limit(1),
-    db.from("votes").select("*")
-  ]);
-
-  if (courseRes.error) throw courseRes.error;
-  if (studentsRes.error) throw studentsRes.error;
-  if (pollRes.error && pollRes.error.code !== "PGRST116") throw pollRes.error;
-  if (votesRes.error) throw votesRes.error;
-
-  state.cache.courseState = courseRes.data;
-  state.cache.students = studentsRes.data || [];
-  state.cache.votes = votesRes.data || [];
-  state.cache.poll = pollRes.data && pollRes.data.length ? pollRes.data[0] : null;
-  state.cache.pollOptions = [];
-
-  if (state.cache.poll) {
-    const optionsRes = await db
-      .from("poll_options")
-      .select("*")
-      .eq("poll_id", state.cache.poll.id)
-      .order("sort_order", { ascending: true });
-    if (optionsRes.error) throw optionsRes.error;
-    state.cache.pollOptions = optionsRes.data || [];
-  }
-}
-
-function showLoading(text = "正在连接轻课数据库…") {
-  app.innerHTML = `
-    <section class="auth-wrap">
-      <div class="auth-card loading-box">
-        <div>
-          <h1>轻课 MomentClass</h1>
-          <p class="desc">${text}</p>
-          <p class="sync-note">如果长时间停留在此页面，请确认已在 Supabase 中执行 schema.sql。</p>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function showError(err) {
-  console.error(err);
-  app.innerHTML = `
-    <section class="auth-wrap">
-      <div class="auth-card">
-        <h1>连接失败</h1>
-        <p class="desc">请检查 Supabase 数据表是否已创建，或网络是否可访问。</p>
-        <div class="alert">${escapeHTML(err.message || String(err))}</div>
-        <button class="primary-btn" onclick="location.reload()">重新加载</button>
-      </div>
-    </section>
-  `;
-}
-
-async function setPage(page) {
+function setPage(page) {
   state.page = page;
   syncUserArea();
-  showLoading();
-  try {
-    await fetchAllData();
-    render();
-  } catch (err) {
-    showError(err);
-  }
+  render();
 }
 
 function goHome() {
@@ -159,7 +135,6 @@ function goHome() {
 function logout() {
   state.currentUser = null;
   state.selectedOption = null;
-  saveSession();
   setPage("login");
 }
 
@@ -169,6 +144,7 @@ function render() {
   if (state.page === "register") return renderRegister();
   if (state.page === "student") return renderStudent();
   if (state.page === "teacher") return renderTeacher();
+  if (state.page === "scan") return renderScan();
   if (state.page === "success") return renderSuccess();
   if (state.page === "courseDetail") return renderCourseDetail();
   if (state.page === "pollCreate") return renderPollCreate();
@@ -189,9 +165,9 @@ function renderLogin() {
           <label class="field"><span>👤</span><input id="loginAccount" placeholder="学号 / 工号" autocomplete="username"></label>
           <label class="field"><span>🔒</span><input id="loginPassword" placeholder="密码" type="password" autocomplete="current-password"></label>
           <button class="primary-btn" onclick="login()">进入课堂</button>
-          <div class="auth-helper">🛡️ 数据已接入 Supabase，多人登录后共享课堂状态</div>
+          <div class="auth-helper">🛡️ 需同时输入账号与密码后登录</div>
           <div id="loginAlert" class="alert"></div>
-          <div class="auth-switch">没有账号？<button onclick="state.registerRole=state.roleTab; renderRegister()">立即注册</button></div>
+          <div class="auth-switch">没有账号？<button onclick="state.registerRole=state.roleTab; setPage('register')">立即注册</button></div>
         </div>
       </div>
     </section>
@@ -199,7 +175,6 @@ function renderLogin() {
 }
 
 function renderRegister() {
-  state.page = "register";
   app.innerHTML = `
     <section class="auth-wrap">
       <div class="auth-card">
@@ -217,14 +192,14 @@ function renderRegister() {
           <label class="field"><span>🔐</span><input id="regPassword2" placeholder="确认密码" type="password"></label>
           <button class="primary-btn" onclick="register()">立即注册</button>
           <div id="regAlert" class="alert"></div>
-          <div class="auth-switch">已有账号？<button onclick="state.page='login'; renderLogin()">去登录</button></div>
+          <div class="auth-switch">已有账号？<button onclick="setPage('login')">去登录</button></div>
         </div>
       </div>
     </section>
   `;
 }
 
-async function login() {
+function login() {
   const account = document.getElementById("loginAccount").value.trim();
   const password = document.getElementById("loginPassword").value.trim();
   const alert = document.getElementById("loginAlert");
@@ -234,47 +209,25 @@ async function login() {
     return;
   }
 
-  const { data, error } = await db
-    .from("users")
-    .select("*")
-    .eq("role", state.roleTab)
-    .eq("account", account)
-    .eq("password", password)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    alert.textContent = error.message;
-    return;
-  }
-  if (!data) {
+  const user = getUsers().find(u => u.role === state.roleTab && u.account === account && u.password === password);
+  if (!user) {
     alert.textContent = "账号或密码错误，请检查后重试";
     return;
   }
 
-  if (data.role === "student") {
-    const { data: student, error: studentError } = await db
-      .from("students")
-      .select("*")
-      .eq("account", account)
-      .maybeSingle();
-
-    if (studentError) {
-      alert.textContent = studentError.message;
-      return;
-    }
-    if (!student) {
+  if (user.role === "student") {
+    const inList = getStudents().some(s => s.account === user.account);
+    if (!inList) {
       alert.textContent = "该学号暂未加入本课程名单，请联系任课老师";
       return;
     }
   }
 
-  state.currentUser = data;
-  saveSession();
-  await setPage(data.role === "teacher" ? "teacher" : "student");
+  state.currentUser = user;
+  setPage(user.role === "teacher" ? "teacher" : "student");
 }
 
-async function register() {
+function register() {
   const account = document.getElementById("regAccount").value.trim();
   const realName = document.getElementById("regName").value.trim();
   const majorClass = state.registerRole === "student" ? document.getElementById("regMajorClass").value.trim() : "";
@@ -291,28 +244,22 @@ async function register() {
     return;
   }
 
-  const { error } = await db.from("users").insert({
-    role: state.registerRole,
-    account,
-    real_name: realName,
-    password,
-    major_class: majorClass
-  });
-
-  if (error) {
-    alert.textContent = error.message.includes("duplicate") ? "该学号/工号已注册" : error.message;
+  const users = getUsers();
+  if (users.some(u => u.account === account)) {
+    alert.textContent = "该学号/工号已注册";
     return;
   }
 
+  const user = { role: state.registerRole, account, realName, password, majorClass };
+  users.push(user);
+  saveUsers(users);
+
   if (state.registerRole === "student") {
-    await db.from("students").upsert({
-      account,
-      real_name: realName,
-      major_class: majorClass,
-      signed: false,
-      voted: false,
-      called: false
-    }, { onConflict: "account" });
+    const students = getStudents();
+    if (!students.some(s => s.account === account)) {
+      students.push({ account, realName, majorClass, signed: false, voted: false, called: false });
+      saveStudents(students);
+    }
   }
 
   state.roleTab = state.registerRole;
@@ -320,17 +267,18 @@ async function register() {
   alert.textContent = "注册成功，请返回登录";
 }
 
+
 function courseTeacherName() {
-  if (state.currentUser && state.currentUser.role === "teacher") return state.currentUser.real_name;
-  return state.cache.courseState?.current_teacher || COURSE.teacher;
+  if (state.currentUser && state.currentUser.role === "teacher") return state.currentUser.realName;
+  return COURSE.teacher;
 }
 
 function courseCard(showStats = false, showDetailButton = true) {
-  const students = state.cache.students;
+  const students = getStudents();
   const signed = students.filter(s => s.signed).length;
   const voted = students.filter(s => s.voted).length;
   const total = students.length;
-  const classActive = state.cache.courseState?.class_active;
+  const classActive = getClassActive();
   return `
     <section class="course-card">
       <div class="course-icon">📖</div>
@@ -347,33 +295,27 @@ function courseCard(showStats = false, showDetailButton = true) {
         <div class="stat"><div class="label">课程学生</div><div class="num">${total}</div></div>
         <div class="stat"><div class="label">已签到</div><div class="num">${signed}</div></div>
         <div class="stat"><div class="label">投票参与率</div><div class="num">${percent(voted,total)}%</div></div>
-      </div>` : (showDetailButton ? `<button class="ghost-btn" onclick="setPage('courseDetail')">查看课程详情</button>` : `<span></span>`)}
+      </div>` : `<button class="ghost-btn" onclick="setPage('courseDetail')">查看课程详情</button>`}
     </section>
   `;
 }
 
 function currentStudent() {
-  return state.cache.students.find(s => s.account === state.currentUser.account) || {
+  return getStudents().find(s => s.account === state.currentUser.account) || {
     account: state.currentUser.account,
-    real_name: state.currentUser.real_name,
-    major_class: state.currentUser.major_class || "",
+    realName: state.currentUser.realName,
+    majorClass: state.currentUser.majorClass || "",
     signed: false,
     voted: false,
     called: false
   };
 }
 
-function userHasVoted() {
-  if (!state.cache.poll || !state.currentUser) return false;
-  return state.cache.votes.some(v => v.poll_id === state.cache.poll.id && v.account === state.currentUser.account);
-}
-
 function renderStudent() {
   const me = currentStudent();
-  const signActive = state.cache.courseState?.sign_active;
-  const classActive = state.cache.courseState?.class_active;
-  const poll = state.cache.poll;
-  const hasVoted = userHasVoted();
+  const signActive = getSignActive();
+  const classActive = getClassActive();
+  const poll = getPoll();
 
   app.innerHTML = `
     <section class="page-title">
@@ -381,6 +323,7 @@ function renderStudent() {
         <h1>学生首页</h1>
         <p>欢迎回来，开始今天的课堂互动</p>
       </div>
+
     </section>
     ${courseCard(false, false)}
     <section class="grid-3">
@@ -393,7 +336,7 @@ function renderStudent() {
           <div>
             <span class="badge ${classActive ? "" : "gray"}">${classActive ? "上课中" : "待上课"}</span>
             <div class="big-status">${me.signed ? "已签到" : (signActive ? "签到进行中" : "待发布")}</div>
-            <p class="small">${me.signed ? "签到时间：" + (me.sign_time || "已记录") : "老师发布签到后，可一键完成签到"}</p>
+            <p class="small">${me.signed ? "签到时间：09:58" : "老师发布签到后，可一键完成签到"}</p>
           </div>
         </div>
         <button class="primary-btn ${me.signed ? "secondary-btn" : ""}" onclick="oneClickSign()" ${(!classActive || !signActive || me.signed) ? "disabled" : ""}>
@@ -406,7 +349,7 @@ function renderStudent() {
           <div class="round-icon blue">📊</div>
           <div><h3>课堂投票</h3><p class="small">${poll ? "当前有投票进行中" : "老师发布后可参与投票"}</p></div>
         </div>
-        ${poll ? studentPollHTML(poll, hasVoted) : `
+        ${poll ? studentPollHTML(poll, me) : `
           <div class="center-box">
             <div>
               <div class="big-status">暂无投票</div>
@@ -425,7 +368,7 @@ function renderStudent() {
           <div class="status-list">
             <div class="status-row"><span>上课状态</span><span class="dot ${classActive ? "done" : ""}">${classActive ? "上课中" : "待上课"}</span></div>
             <div class="status-row"><span>签到状态</span><span class="dot ${me.signed ? "done" : ""}">${me.signed ? "已签到" : "未签到"}</span></div>
-            <div class="status-row"><span>投票状态</span><span class="dot ${hasVoted ? "done" : ""}">${hasVoted ? "已投票" : "未投票"}</span></div>
+            <div class="status-row"><span>投票状态</span><span class="dot ${me.voted ? "done" : ""}">${me.voted ? "已投票" : "未投票"}</span></div>
             <div class="status-row"><span>是否被点名</span><span class="dot ${me.called ? "done" : ""}">${me.called ? "已点名" : "未点名"}</span></div>
           </div>
         </article>
@@ -435,9 +378,9 @@ function renderStudent() {
             <div><h3>学生信息</h3><p class="small">用于课程名单匹配</p></div>
           </div>
           <div class="status-list">
-            <div class="status-row"><span>姓名</span><b>${escapeHTML(me.real_name)}</b></div>
-            <div class="status-row"><span>学号</span><b>${escapeHTML(me.account)}</b></div>
-            <div class="status-row"><span>专业班级</span><b>${escapeHTML(me.major_class || "未填写")}</b></div>
+            <div class="status-row"><span>姓名</span><b>${me.realName}</b></div>
+            <div class="status-row"><span>学号</span><b>${me.account}</b></div>
+            <div class="status-row"><span>专业班级</span><b>${me.majorClass || "未填写"}</b></div>
           </div>
         </article>
       </aside>
@@ -452,21 +395,21 @@ function signText(me, signActive, classActive) {
   return "等待老师发布本节课签到";
 }
 
-function studentPollHTML(poll, hasVoted) {
-  if (hasVoted) {
+function studentPollHTML(poll, me) {
+  if (me.voted) {
     return `
-      <b>${escapeHTML(poll.question)}</b>
+      <b>${poll.question}</b>
       <p class="small">你已提交投票，以下为实时结果</p>
-      ${pollResultsHTML()}
+      ${pollResultsHTML(poll)}
     `;
   }
   return `
-    <b>${escapeHTML(poll.question)}</b>
+    <b>${poll.question}</b>
     <p class="small">单选 · 匿名投票</p>
     <div class="poll-options">
-      ${state.cache.pollOptions.map((op,i)=>`
-        <div class="option ${state.selectedOption===op.id ? "selected" : ""}" onclick="selectOption(${op.id})">
-          <span class="letter">${String.fromCharCode(65+i)}</span>${escapeHTML(op.option_text)}
+      ${poll.options.map((t,i)=>`
+        <div class="option ${state.selectedOption===i ? "selected" : ""}" onclick="selectOption(${i})">
+          <span class="letter">${String.fromCharCode(65+i)}</span>${escapeHTML(t)}
         </div>`).join("")}
     </div>
     <button class="primary-btn" onclick="submitVote()">提交投票</button>
@@ -475,46 +418,15 @@ function studentPollHTML(poll, hasVoted) {
   `;
 }
 
-async function oneClickSign() {
-  if (!state.cache.courseState?.class_active || !state.cache.courseState?.sign_active) {
-    alert("老师尚未发布签到");
-    return;
-  }
-  const now = new Date().toLocaleString("zh-CN");
-  const { error } = await db
-    .from("students")
-    .update({ signed: true, sign_time: now })
-    .eq("account", state.currentUser.account);
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-  await setPage("success");
-}
-
-function renderSuccess() {
-  app.innerHTML = `
-    <section class="auth-wrap">
-      <div class="auth-card" style="text-align:center;">
-        <div class="success-mark">✓</div>
-        <h1>签到成功</h1>
-        <p class="desc">你已完成《${COURSE.name}》本节课签到</p>
-        <button class="primary-btn" onclick="setPage('student')">返回学生首页</button>
-      </div>
-    </section>
-  `;
-}
-
 function renderTeacher() {
-  const students = state.cache.students;
+  const students = getStudents();
   const signed = students.filter(s => s.signed).length;
   const voted = students.filter(s => s.voted).length;
   const total = students.length;
-  const called = students.find(s => s.called);
-  const signActive = state.cache.courseState?.sign_active;
-  const classActive = state.cache.courseState?.class_active;
-  const poll = state.cache.poll;
+  const called = students.find(s => s.account === getCalledAccount());
+  const signActive = getSignActive();
+  const classActive = getClassActive();
+  const poll = getPoll();
 
   app.innerHTML = `
     <section class="page-title">
@@ -555,8 +467,8 @@ function renderTeacher() {
         <div class="center-box">
           <div>
             <p class="small">本次抽取结果</p>
-            <div class="big-status">${called ? escapeHTML(called.real_name) : "暂未抽取"}</div>
-            <p class="small">${called ? "学号：" + escapeHTML(called.account) + " · " + escapeHTML(called.major_class || "") : "请先在名单管理中导入学生"}</p>
+            <div class="big-status">${called ? called.realName : "暂未抽取"}</div>
+            <p class="small">${called ? "学号：" + called.account + " · " + (called.majorClass || "") : "请先在名单管理中导入学生"}</p>
           </div>
         </div>
         <button class="primary-btn" onclick="drawStudent()" ${!classActive ? "disabled" : ""}>开始抽取</button>
@@ -570,7 +482,7 @@ function renderTeacher() {
         ${poll ? `
           <b>${escapeHTML(poll.question)}</b>
           <p class="small">已发布 · 实时结果显示</p>
-          ${pollResultsHTML()}
+          ${pollResultsHTML(poll)}
           <div class="action-row">
             <button class="secondary-btn" onclick="setPage('pollCreate')">重新创建</button>
             <button class="danger-btn" onclick="clearPoll()">结束投票</button>
@@ -617,111 +529,13 @@ function renderTeacher() {
   `;
 }
 
-async function toggleClass() {
-  const current = !!state.cache.courseState?.class_active;
-  const payload = {
-    class_active: !current,
-    sign_active: current ? false : state.cache.courseState?.sign_active,
-    current_teacher: state.currentUser.real_name
-  };
-  const { error } = await db.from("course_state").update(payload).eq("id", 1);
-  if (error) return alert(error.message);
-  await setPage("teacher");
-}
-
-async function toggleSign() {
-  if (!state.cache.courseState?.class_active) return;
-  const { error } = await db
-    .from("course_state")
-    .update({ sign_active: !state.cache.courseState.sign_active })
-    .eq("id", 1);
-  if (error) return alert(error.message);
-  await setPage("teacher");
-}
-
-async function resetSignOnly() {
-  const { error } = await db.from("students").update({ signed: false, sign_time: null }).neq("account", "__none__");
-  if (error) return alert(error.message);
-  await db.from("course_state").update({ sign_active: false }).eq("id", 1);
-  await setPage("teacher");
-}
-
-async function drawStudent() {
-  const students = state.cache.students;
-  if (!students.length) return alert("请先导入学生名单");
-  const pick = students[Math.floor(Math.random() * students.length)];
-  await db.from("students").update({ called: false }).neq("account", "__none__");
-  const { error } = await db.from("students").update({ called: true }).eq("account", pick.account);
-  if (error) return alert(error.message);
-  await setPage("teacher");
-}
-
-async function clearPoll() {
-  if (!state.cache.poll) return;
-  await db.from("votes").delete().eq("poll_id", state.cache.poll.id);
-  await db.from("poll_options").delete().eq("poll_id", state.cache.poll.id);
-  const { error } = await db.from("polls").delete().eq("id", state.cache.poll.id);
-  if (error) return alert(error.message);
-  await db.from("students").update({ voted: false }).neq("account", "__none__");
-  await setPage("teacher");
-}
-
-function pollResultsHTML() {
-  const poll = state.cache.poll;
-  if (!poll) return "";
-  const options = state.cache.pollOptions;
-  const votes = state.cache.votes.filter(v => v.poll_id === poll.id);
-  const total = votes.length || 1;
-
-  return options.map((op,i)=>{
-    const count = votes.filter(v => v.option_id === op.id).length;
-    const p = Math.round(count / total * 100);
-    return `
-      <div class="result-row">
-        <span>${String.fromCharCode(65+i)}. ${escapeHTML(op.option_text)}</span>
-        <div class="bar"><span style="width:${p}%"></span></div>
-        <span>${p}%（${count}人）</span>
-      </div>
-    `;
-  }).join("");
-}
-
-function selectOption(optionId) {
-  state.selectedOption = optionId;
-  renderStudent();
-}
-
-async function submitVote() {
-  const poll = state.cache.poll;
-  if (!poll) return;
-  if (!state.selectedOption) return alert("请先选择一个投票选项");
-
-  const { error } = await db.from("votes").insert({
-    poll_id: poll.id,
-    option_id: state.selectedOption,
-    account: state.currentUser.account
-  });
-  if (error) {
-    alert(error.message.includes("duplicate") ? "你已经提交过投票" : error.message);
-    return;
-  }
-  await db.from("students").update({ voted: true }).eq("account", state.currentUser.account);
-  state.selectedOption = null;
-  await setPage("student");
-}
-
-function showStudentResults() {
-  const el = document.getElementById("voteResult");
-  if (el) el.innerHTML = `<div style="margin-top:18px;">${pollResultsHTML()}</div>`;
-}
-
 function renderCourseDetail() {
-  const classActive = state.cache.courseState?.class_active;
+  const classActive = getClassActive();
   app.innerHTML = `
     <section class="page-title">
       <div>
         <h1>课程详情</h1>
-        <p>本页面展示《${COURSE.name}》的课堂互动信息</p>
+        <p>本原型仅服务于《${COURSE.name}》这门课程</p>
       </div>
       <div class="page-actions">
         <button class="ghost-btn" onclick="goHome()">返回首页</button>
@@ -738,7 +552,7 @@ function renderCourseDetail() {
           <div class="detail-item"><b>上课时间</b><span>${COURSE.time}</span></div>
           <div class="detail-item"><b>教室</b><span>${COURSE.room}</span></div>
           <div class="detail-item"><b>授课时间</b><span>${COURSE.weeks}</span></div>
-          <div class="detail-item"><b>任课教师</b><span>${escapeHTML(courseTeacherName())}</span></div>
+          <div class="detail-item"><b>任课教师</b><span>${courseTeacherName()}</span></div>
           <div class="detail-item"><b>课程对象</b><span>${COURSE.audience}</span></div>
           <div class="detail-item"><b>课堂状态</b><span><span class="badge ${classActive ? "" : "gray"}">${classActive ? "上课中" : "待上课"}</span></span></div>
         </div>
@@ -749,14 +563,15 @@ function renderCourseDetail() {
           <div><h3>轻课网页说明</h3><p class="small">课堂互动网页使用说明</p></div>
         </div>
         <p style="line-height:1.9;color:var(--muted);">${COURSE.desc}</p>
+        
       </article>
     </section>
   `;
 }
 
 function renderPollCreate() {
-  const poll = state.cache.poll;
-  const options = poll ? state.cache.pollOptions.map(o => o.option_text) : ["", ""];
+  const poll = getPoll();
+  const options = poll ? poll.options : ["", ""];
   app.innerHTML = `
     <section class="page-title">
       <div>
@@ -792,16 +607,23 @@ function optionInputHTML(i, value="") {
 function addOptionInput() {
   const box = document.getElementById("optionEditor");
   const count = box.querySelectorAll(".option-input").length;
-  if (count >= 6) return alert("最多设置 6 个选项");
+  if (count >= 6) {
+    alert("最多设置 6 个选项");
+    return;
+  }
   box.insertAdjacentHTML("beforeend", optionInputHTML(count, ""));
 }
 
 function removeOptionInput() {
   const box = document.getElementById("optionEditor");
   const items = box.querySelectorAll(".option-input");
-  if (items.length <= 2) return alert("至少保留 2 个选项");
+  if (items.length <= 2) {
+    alert("至少保留 2 个选项");
+    return;
+  }
   items[items.length - 1].remove();
 }
+
 
 function clearPollForm() {
   document.getElementById("pollQuestion").value = "";
@@ -814,7 +636,7 @@ function clearPollForm() {
   }
 }
 
-async function publishPoll() {
+function publishPoll() {
   const question = document.getElementById("pollQuestion").value.trim();
   const optionInputs = [...document.querySelectorAll("#optionEditor input")];
   const options = optionInputs.map(i => i.value.trim()).filter(Boolean);
@@ -829,45 +651,26 @@ async function publishPoll() {
     return;
   }
 
-  if (state.cache.poll) await clearPollSilent();
+  const students = getStudents().map(s => ({...s, voted:false}));
+  saveStudents(students);
 
-  const { data: poll, error } = await db
-    .from("polls")
-    .insert({ question, active: true })
-    .select()
-    .single();
-
-  if (error) {
-    alertBox.textContent = error.message;
-    return;
-  }
-
-  const optionRows = options.map((option_text, i) => ({
-    poll_id: poll.id,
-    option_text,
-    sort_order: i
-  }));
-
-  const { error: optionError } = await db.from("poll_options").insert(optionRows);
-  if (optionError) {
-    alertBox.textContent = optionError.message;
-    return;
-  }
-
-  await db.from("students").update({ voted: false }).neq("account", "__none__");
-  await setPage("teacher");
-}
-
-async function clearPollSilent() {
-  if (!state.cache.poll) return;
-  await db.from("votes").delete().eq("poll_id", state.cache.poll.id);
-  await db.from("poll_options").delete().eq("poll_id", state.cache.poll.id);
-  await db.from("polls").delete().eq("id", state.cache.poll.id);
+  const poll = {
+    id: Date.now(),
+    question,
+    options,
+    counts: options.map(() => 0),
+    active: true
+  };
+  savePoll(poll);
+  state.selectedOption = null;
+  setPage("teacher");
 }
 
 function renderStudentManage() {
-  const students = state.cache.students;
-  const sample = `李静,2023123456,2023级新闻班\n李明轩,2023123457,2023级广告班\n陈雨桐,2023123458,2023级新闻班`;
+  const students = getStudents();
+  const sample = `李静,2023123456,2023级新闻班
+李明轩,2023123457,2023级广告班
+陈雨桐,2023123458,2023级新闻班`;
   app.innerHTML = `
     <section class="page-title">
       <div>
@@ -890,7 +693,6 @@ function renderStudentManage() {
           <label class="field"><span>🏷️</span><input id="oneMajorClass" placeholder="专业班级，例如：2023级新闻班"></label>
           <button class="primary-btn" onclick="addOneStudent()">添加学生</button>
           <div id="studentManageAlert" class="alert"></div>
-          <p class="small">新添加学生默认密码为 123456。</p>
         </div>
       </article>
 
@@ -910,7 +712,7 @@ function renderStudentManage() {
     <section class="card" style="margin-top:20px;">
       <div class="card-head">
         <div class="round-icon mint">👥</div>
-        <div><h3>当前课程名单</h3><p class="small">共 ${students.length} 人；删除学生表示中途退课，仅教师端可操作</p></div>
+        <div><h3>当前课程名单</h3><p class="small">共 ${students.length} 人</p></div>
       </div>
       <table class="list-table">
         <thead>
@@ -926,9 +728,9 @@ function renderStudentManage() {
         <tbody>
           ${students.map(s => `
             <tr>
-              <td>${escapeHTML(s.real_name)}</td>
+              <td>${escapeHTML(s.realName)}</td>
               <td>${escapeHTML(s.account)}</td>
-              <td>${escapeHTML(s.major_class || "")}</td>
+              <td>${escapeHTML(s.majorClass || "")}</td>
               <td><span class="dot ${s.signed ? "done" : ""}">${s.signed ? "已签到" : "未签到"}</span></td>
               <td><span class="dot ${s.voted ? "done" : ""}">${s.voted ? "已投票" : "未投票"}</span></td>
               <td><button class="danger-btn tiny-btn" onclick="removeStudent('${escapeAttr(s.account)}')">删除</button></td>
@@ -940,11 +742,25 @@ function renderStudentManage() {
   `;
 }
 
-function fillSample() {
-  document.getElementById("batchText").value = `李静,2023123456,2023级新闻班\n李明轩,2023123457,2023级广告班\n陈雨桐,2023123458,2023级新闻班`;
+
+function removeStudent(account) {
+  const students = getStudents();
+  const target = students.find(s => s.account === account);
+  if (!target) return;
+  if (!confirm(`确认将 ${target.realName} 从本课程名单中删除吗？该操作表示中途退课，仅教师端可执行。`)) return;
+  const next = students.filter(s => s.account !== account);
+  saveStudents(next);
+  if (getCalledAccount() === account) setCalledAccount("");
+  renderStudentManage();
 }
 
-async function addOneStudent() {
+function fillSample() {
+  document.getElementById("batchText").value = `李静,2023123456,2023级新闻班
+李明轩,2023123457,2023级广告班
+陈雨桐,2023123458,2023级新闻班`;
+}
+
+function addOneStudent() {
   const name = document.getElementById("oneName").value.trim();
   const account = document.getElementById("oneAccount").value.trim();
   const majorClass = document.getElementById("oneMajorClass").value.trim();
@@ -953,76 +769,220 @@ async function addOneStudent() {
     alertBox.textContent = "请完整填写学生信息";
     return;
   }
-  await upsertStudent({ real_name:name, account, major_class:majorClass });
-  await setPage("studentManage");
+  upsertStudent({realName:name, account, majorClass});
+  alertBox.style.color = "var(--green-dark)";
+  alertBox.textContent = "添加成功";
+  renderStudentManage();
 }
 
-async function batchImportStudents() {
+function batchImportStudents() {
   const text = document.getElementById("batchText").value.trim();
-  if (!text) return alert("请先输入名单内容");
+  if (!text) {
+    alert("请先输入名单内容");
+    return;
+  }
   const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
   let ok = 0;
-  for (const line of lines) {
+  lines.forEach(line => {
     const parts = line.split(/[,，\s]+/).map(p => p.trim()).filter(Boolean);
     if (parts.length >= 3) {
-      await upsertStudent({ real_name: parts[0], account: parts[1], major_class: parts.slice(2).join("") });
+      upsertStudent({ realName: parts[0], account: parts[1], majorClass: parts.slice(2).join("") });
       ok++;
     }
-  }
+  });
   alert(`已导入 ${ok} 条学生信息。新导入学生默认密码为 123456`);
-  await setPage("studentManage");
+  renderStudentManage();
 }
 
-async function upsertStudent(newStudent) {
-  const { error } = await db.from("students").upsert({
-    ...newStudent,
-    signed: false,
-    voted: false,
-    called: false
-  }, { onConflict: "account" });
-  if (error) return alert(error.message);
-
-  const { data: existing } = await db.from("users").select("*").eq("account", newStudent.account).maybeSingle();
-  if (existing) {
-    await db.from("users").update({
-      real_name: newStudent.real_name,
-      major_class: newStudent.major_class
-    }).eq("account", newStudent.account);
+function upsertStudent(newStudent) {
+  const students = getStudents();
+  const old = students.find(s => s.account === newStudent.account);
+  if (old) {
+    old.realName = newStudent.realName;
+    old.majorClass = newStudent.majorClass;
   } else {
-    await db.from("users").insert({
-      role: "student",
-      account: newStudent.account,
-      real_name: newStudent.real_name,
-      major_class: newStudent.major_class,
-      password: "123456"
-    });
+    students.push({ ...newStudent, signed:false, voted:false, called:false });
   }
-}
+  saveStudents(students);
 
-async function removeStudent(account) {
-  const target = state.cache.students.find(s => s.account === account);
-  if (!target) return;
-  if (!confirm(`确认将 ${target.real_name} 从本课程名单中删除吗？该操作表示中途退课，仅教师端可执行。`)) return;
-  const { error } = await db.from("students").delete().eq("account", account);
-  if (error) return alert(error.message);
-  await setPage("studentManage");
-}
-
-async function init() {
-  loadSession();
-  syncUserArea();
-  showLoading();
-  try {
-    await fetchAllData();
-    if (state.currentUser) {
-      state.page = state.currentUser.role === "teacher" ? "teacher" : "student";
-    } else {
-      state.page = "login";
-    }
-    render();
-  } catch (err) {
-    showError(err);
+  const users = getUsers();
+  const oldUser = users.find(u => u.account === newStudent.account);
+  if (oldUser) {
+    oldUser.realName = newStudent.realName;
+    oldUser.majorClass = newStudent.majorClass;
+  } else {
+    users.push({ role:"student", account:newStudent.account, realName:newStudent.realName, majorClass:newStudent.majorClass, password:"123456" });
   }
+  saveUsers(users);
 }
 
-init();
+function qrBlock(signed, total) {
+  return `
+    <div class="qr-wrap">
+      <div class="timer">扫码签到中 · 02:59</div>
+      <div class="qr">${Array.from({length:81}, (_,i)=>`<i class="${(i*7+i%5)%3===0 || [0,1,2,9,18,10,20,60,70,80,72,62].includes(i) ? "dark" : ""}"></i>`).join("")}</div>
+      <div class="big-status">${signed} / ${total}</div>
+      <p class="small">教室大屏展示二维码，学生端“扫一扫签到”按钮同步开启</p>
+    </div>
+  `;
+}
+
+function renderScan() {
+  const signActive = getSignActive();
+  const classActive = getClassActive();
+  app.innerHTML = `
+    <section class="page-title">
+      <div>
+        <h1>扫码签到</h1>
+        <p>请扫描教师端展示的签到二维码</p>
+      </div>
+      <button class="ghost-btn" onclick="setPage('student')">返回首页</button>
+    </section>
+    <section class="card" style="max-width:620px;margin:0 auto;text-align:center;">
+      <div class="scan-frame"><span>▦</span></div>
+      <p class="small">${classActive && signActive ? "已检测到本节课签到二维码" : "当前未开放签到，暂时无法完成签到"}</p>
+      <div class="action-row">
+        <button class="secondary-btn" onclick="setPage('student')">返回首页</button>
+        <button class="primary-btn" onclick="mockScan()" ${(classActive && signActive) ? "" : "disabled"}>模拟扫码签到</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderSuccess() {
+  app.innerHTML = `
+    <section class="auth-wrap">
+      <div class="auth-card" style="text-align:center;">
+        <div class="success-mark">✓</div>
+        <h1>签到成功</h1>
+        <p class="desc">你已完成《${COURSE.name}》本节课签到</p>
+        <button class="primary-btn" onclick="setPage('student')">返回学生首页</button>
+      </div>
+    </section>
+  `;
+}
+
+
+function oneClickSign() {
+  if (!getClassActive() || !getSignActive()) {
+    alert("老师尚未发布签到");
+    return;
+  }
+  const students = getStudents();
+  const me = students.find(s => s.account === state.currentUser.account);
+  if (me) {
+    me.signed = true;
+    saveStudents(students);
+  }
+  setPage("success");
+}
+
+function mockScan() {
+  const students = getStudents();
+  const me = students.find(s => s.account === state.currentUser.account);
+  if (me) {
+    me.signed = true;
+    saveStudents(students);
+  }
+  setPage("success");
+}
+
+function toggleClass() {
+  setClassActive(!getClassActive());
+  renderTeacher();
+}
+
+function toggleSign() {
+  if (!getClassActive()) return;
+  setSignActive(!getSignActive());
+  renderTeacher();
+}
+
+function resetSignOnly() {
+  const students = getStudents().map(s => ({...s, signed:false}));
+  saveStudents(students);
+  setSignActive(false);
+  renderTeacher();
+}
+
+function drawStudent() {
+  const students = getStudents();
+  if (!students.length) {
+    alert("请先导入学生名单");
+    return;
+  }
+  const pick = students[Math.floor(Math.random() * students.length)];
+  students.forEach(s => s.called = s.account === pick.account);
+  saveStudents(students);
+  setCalledAccount(pick.account);
+  renderTeacher();
+}
+
+function clearPoll() {
+  savePoll(null);
+  const students = getStudents().map(s => ({...s, voted:false}));
+  saveStudents(students);
+  state.selectedOption = null;
+  renderTeacher();
+}
+
+function selectOption(i) {
+  state.selectedOption = i;
+  renderStudent();
+}
+
+function submitVote() {
+  const poll = getPoll();
+  if (!poll) return;
+  if (state.selectedOption === null) {
+    alert("请先选择一个投票选项");
+    return;
+  }
+  const students = getStudents();
+  const me = students.find(s => s.account === state.currentUser.account);
+  if (me && !me.voted) {
+    me.voted = true;
+    saveStudents(students);
+    poll.counts[state.selectedOption] += 1;
+    savePoll(poll);
+  }
+  state.selectedOption = null;
+  renderStudent();
+}
+
+function showStudentResults() {
+  const poll = getPoll();
+  const el = document.getElementById("voteResult");
+  if (el && poll) el.innerHTML = `<div style="margin-top:18px;">${pollResultsHTML(poll)}</div>`;
+}
+
+function pollResultsHTML(poll) {
+  const total = poll.counts.reduce((a,b)=>a+b,0) || 1;
+  return poll.options.map((label,i)=>{
+    const p = Math.round((poll.counts[i] || 0) / total * 100);
+    return `
+      <div class="result-row">
+        <span>${String.fromCharCode(65+i)}. ${escapeHTML(label)}</span>
+        <div class="bar"><span style="width:${p}%"></span></div>
+        <span>${p}%（${poll.counts[i] || 0}人）</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function percent(a, b) {
+  return b ? Math.round(a / b * 100) : 0;
+}
+
+function escapeHTML(str="") {
+  return String(str).replace(/[&<>"']/g, m => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"
+  }[m]));
+}
+
+function escapeAttr(str="") {
+  return escapeHTML(str).replace(/"/g, "&quot;");
+}
+
+initStorage();
+renderLogin();
